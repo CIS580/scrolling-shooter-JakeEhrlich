@@ -57,6 +57,10 @@ window.onkeydown = function(event) {
  */
 window.onkeyup = function(event) {
   switch(event.key) {
+    case "Space":
+    case " ":
+      player.fireBullet({x:0, y:-1});
+      break;
     case "ArrowUp":
     case "w":
       input.up = false;

@@ -2,7 +2,8 @@
 
 /* Classes and Libraries */
 const Vector = require('./vector');
-const Missile = require('./missile');
+const Tile = require('./tile');
+//const Missile = require('./missile');
 
 /* Constants */
 const PLAYER_SPEED = 5;
@@ -27,7 +28,10 @@ function Player(bullets, missiles) {
   this.position = {x: 200, y: 200};
   this.velocity = {x: 0, y: 0};
   this.img = new Image()
+  this.img.crossOrigin = "anonymous";
   this.img.src = 'assets/tyrian.shp.007D3C.png';
+  //color key is oddly #BFDCBF
+  this.tile = new Tile({x:48,y:57,width:23,height:23,scaleX:23,scaleY:27}, this.img, [0xbf, 0xdc, 0xbf]);
 }
 
 /**
@@ -72,7 +76,8 @@ Player.prototype.render = function(elapasedTime, ctx) {
   var offset = this.angle * 23;
   ctx.save();
   ctx.translate(this.position.x, this.position.y);
-  ctx.drawImage(this.img, 48+offset, 57, 23, 27, -12.5, -12, 23, 27);
+  //ctx.drawImage(this.img, 48+offset, 57, 23, 27, 0, 0, 23, 27);
+  this.tile.render(elapasedTime, ctx);
   ctx.restore();
 }
 
@@ -82,7 +87,7 @@ Player.prototype.render = function(elapasedTime, ctx) {
  * @param {Vector} direction
  */
 Player.prototype.fireBullet = function(direction) {
-  var position = Vector.add(this.position, {x:30, y:30});
+  var position = Vector.add(this.position, {x:12, y:0});
   var velocity = Vector.scale(Vector.normalize(direction), BULLET_SPEED);
   this.bullets.add(position, velocity);
 }
