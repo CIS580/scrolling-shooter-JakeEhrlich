@@ -9,16 +9,23 @@ const Player = require('./player');
 const BulletPool = require('./bullet_pool');
 const Cloud = require('./cloud');
 const Background = require('./background');
+const SmokeParticles = require('./smoke_particles')
+const Wheel = require('./wheel');
 
 /* Global variables */
 var canvas = document.getElementById('screen');
 var clouds = [];
-var height = 200000;
+var camera = new Camera(canvas);
+var wheels = [];
+
 for(var i = 0; i < 1000; ++i) {
+  wheels.push(new Wheel({x:Math.random() * 1000, y : -Math.random() * 10000}));
+}
+for(var i = 0; i < 10; ++i) {
   var x = Math.random() * canvas.width;
-  var y = - Math.random() * height + 1000;
+  var y = Math.random() * canvas.height;
   //console.log(x, y);
-  clouds.push(new Cloud({x:x,y:y}));
+  clouds.push(new Cloud({x:x,y:y}, camera));
 }
 var game = new Game(canvas, update, render);
 var input = {
@@ -27,11 +34,12 @@ var input = {
   left: false,
   right: false
 }
-var camera = new Camera(canvas);
+
 var background = new Background(camera);
 var bullets = new BulletPool(10);
 var missiles = [];
 var player = new Player(bullets, missiles);
+var smoke = new SmokeParticles(3000);
 
 /**
  * @function onkeydown
@@ -60,6 +68,22 @@ window.onkeydown = function(event) {
       event.preventDefault();
       break;
   }
+}
+
+function explode(x, y) {
+  for(var i = 0; i < 150; ++i) {
+    var theta = Math.random() * 2 * Math.PI;
+    var mag = Math.random() * 0.1;
+    var vx = mag * Math.cos(theta);
+    var vy = mag * Math.sin(theta);
+    smoke.emit({x:x + player.position.x, y:y + player.position.y}, {x:vx, y:vy});
+  }
+}
+
+window.onclick = function(event) {
+  var x = event.pageX - canvas.offsetLeft,
+      y = event.pageY - canvas.offsetTop;
+  explode(x, y);
 }
 
 /**
@@ -116,7 +140,7 @@ masterLoop(performance.now());
  * the number of milliseconds passed since the last frame.
  */
 function update(elapsedTime) {
-
+  smoke.update(elapsedTime);
   // update the player
   player.update(elapsedTime, input);
 
@@ -125,6 +149,9 @@ function update(elapsedTime) {
   camera.update(player.position);
   clouds.forEach(function(cloud) {
     cloud.update(elapsedTime);
+  });
+  wheels.forEach(function(wheel) {
+    wheel.update(elapsedTime);
   });
   // Update bullets
   bullets.update(elapsedTime, function(bullet){
@@ -175,17 +202,18 @@ function renderWorld(elapsedTime, ctx) {
     background.render(elapsedTime, ctx);
     // Render the bullets
     bullets.render(elapsedTime, ctx);
-    clouds.forEach(function(cloud) {
-      if(camera.onScreen(cloud)) cloud.render(elapsedTime, ctx);
-      //console.log(cloud);
+    //render particle effects
+    smoke.render(elapsedTime, ctx);
+    wheels.forEach(function(wheel) {
+      if(camera.onScreen(wheel)) wheel.render(elapsedTime, ctx);
     });
-    // Render the missiles
-    missiles.forEach(function(missile) {
-      missile.render(elapsedTime, ctx);
-    });
-
     // Render the player
     player.render(elapsedTime, ctx);
+    //render clouds on top of everything to remove information
+    //from the player
+    clouds.forEach(function(cloud) {
+      if(camera.onScreen(cloud)) cloud.render(elapsedTime, ctx);
+    });
 }
 
 /**
@@ -198,7 +226,7 @@ function renderGUI(elapsedTime, ctx) {
   // TODO: Render the GUI
 }
 
-},{"./background":2,"./bullet_pool":3,"./camera":4,"./cloud":5,"./game":6,"./player":7,"./vector":10}],2:[function(require,module,exports){
+},{"./background":2,"./bullet_pool":3,"./camera":4,"./cloud":5,"./game":6,"./player":7,"./smoke_particles":8,"./vector":11,"./wheel":12}],2:[function(require,module,exports){
 "use strict";
 
 module.exports = exports = Background;
@@ -206,35 +234,47 @@ module.exports = exports = Background;
 /* Classes and Libraries */
 const Tilemap = require('./tilemap');
 
-//a class to efficently draw a background
-//this is tricky because we want the background to move
-//it only has to move a little however
-//more over we want the background to draw *very* efficently because its
-//the biggest thing we have to draw and just look how much the measly clouds
-//slowed us down!
+//this is my most costly item so I try and optimize it as much as possible
 function Background(camera) {
   this.img = new Image();
   this.img.src = 'assets/shapesy.png';
   this.tx = 24;
   this.ty = 28;
   this.tmap = new Tilemap(this.img, this.tx, this.ty);
+  this.buffer = document.createElement('canvas');
+  this.buffer.width = 1028 + 48;
+  this.buffer.height = 768 + 28*2;
+  this.ctx = this.buffer.getContext('2d');
   this.camera = camera;
+  this.loaded = false
 }
 
 Background.prototype.render = function(elapasedTime, ctx) {
+  if(!this.loaded && this.tmap.img.complete) {
+    console.log("loaded!");
+    for(var i = 0; i * this.tx <= this.camera.width + 48; ++i) {
+      for(var j = 0; j * this.ty <= this.camera.height + 28*2; ++j) {
+        this.tmap.render(24, this.ctx, i*this.tx, j*this.ty);
+      }
+    }
+    this.loaded = true;
+  }
+  var cy = Math.floor(this.camera.y / this.ty) * this.ty;
+  ctx.drawImage(this.buffer, 0, cy);
   //loop over the bounds
+  /*
   for(var i = -1; i * this.tx <= this.camera.width; ++i) {
     for(var j = -1; j * this.ty <= this.camera.height; ++j) {
-      ctx.save();
+      //ctx.save();
       var cy = Math.floor(this.camera.y / this.ty) * this.ty;
-      ctx.translate(i*this.tx, j*this.ty + cy); //count act camera
-      this.tmap.render(24, ctx); //draw plane water
-      ctx.restore();
+      //ctx.translate(i*this.tx, j*this.ty + cy); //count act camera
+      this.tmap.render(24, ctx, i*this.tx, j*this.ty + cy); //draw plane water
+      //ctx.restore();
     }
-  }
+  }*/
 }
 
-},{"./tilemap":9}],3:[function(require,module,exports){
+},{"./tilemap":10}],3:[function(require,module,exports){
 "use strict";
 
 /**
@@ -403,14 +443,15 @@ Camera.prototype.toWorldCoordinates = function(screenCoordinates) {
   return Vector.add(screenCoordinates, this);
 }
 
-},{"./vector":10}],5:[function(require,module,exports){
+},{"./vector":11}],5:[function(require,module,exports){
 "use strict";
 
 module.exports = exports = Cloud;
 const Tile = require('./tile');
 
 //a class to draw a part of an image
-function Cloud(position) {
+function Cloud(position, camera) {
+  this.camera = camera;
   this.x = position.x;
   this.y = position.y;
   var tile = {x:80, y:305, width:170-80, height:460-305, scaleX:170-80, scaleY:460-305};
@@ -423,6 +464,10 @@ function Cloud(position) {
 
 Cloud.prototype.update = function(elapasedTime, ctx) {
   this.y += 0.05 * elapasedTime;
+  if(this.y > this.camera.y + this.camera.height) {
+    this.x = Math.random() * 1000;
+    this.y = this.camera.y - 120 - Math.random() * (800 - 120);
+  }
 }
 
 Cloud.prototype.render = function(elapasedTime, ctx) {
@@ -432,7 +477,7 @@ Cloud.prototype.render = function(elapasedTime, ctx) {
   ctx.restore();
 }
 
-},{"./tile":8}],6:[function(require,module,exports){
+},{"./tile":9}],6:[function(require,module,exports){
 "use strict";
 
 /**
@@ -513,11 +558,9 @@ module.exports = exports = Player;
  * Creates a player
  * @param {BulletPool} bullets the bullet pool
  */
-function Player(bullets, missiles) {
+function Player(bullets, fire) {
   this.offx = 300;
   this.offy = 500;
-  this.missiles = missiles;
-  this.missileCount = 4;
   this.bullets = bullets;
   this.angle = 0;
   this.position = {x: 0, y: 0};
@@ -556,9 +599,9 @@ Player.prototype.update = function(elapsedTime, input) {
 
   // don't let the player move off-screen
   if(this.offx < 0) this.offx = 0;
-  if(this.offx > 1024) this.offx = 1024;
+  if(this.offx > 1024 - 24) this.offx = 1024 - 24;
   if(this.offy < 0) this.offy = 0;
-  if(this.offx > 786) this.offy = 786;
+  if(this.offy > 786 - 24) this.offy = 786 - 24;
 }
 
 /**
@@ -602,7 +645,102 @@ Player.prototype.fireMissile = function() {
   }
 }
 
-},{"./tile":8,"./vector":10}],8:[function(require,module,exports){
+},{"./tile":9,"./vector":11}],8:[function(require,module,exports){
+"use strict";
+
+/**
+ * @module SmokeParticles
+ * A class for managing a particle engine that
+ * emulates a smoke trail
+ */
+module.exports = exports = SmokeParticles;
+
+const xidx = 0;
+const yidx = 1;
+const vxidx = 2;
+const vyidx = 3;
+const timeidx = 4;
+const size = 5;
+
+/**
+ * @constructor SmokeParticles
+ * Creates a SmokeParticles engine of the specified size
+ * @param {uint} size the maximum number of particles to exist concurrently
+ */
+function SmokeParticles(maxSize) {
+  this.pool = new Float32Array(size * maxSize);
+  this.start = 0;
+  this.end = 0;
+  this.max = size * maxSize;
+}
+
+
+
+/**
+ * @function emit
+ * Adds a new particle at the given position
+ * @param {Vector} position
+*/
+SmokeParticles.prototype.emit = function(position, vol) {
+  var idx = this.end % this.max;
+  this.pool[idx + xidx] = position.x;
+  this.pool[idx + yidx] = position.y;
+  this.pool[idx + vxidx] = vol.x;
+  this.pool[idx + vyidx] = vol.y;
+  this.pool[idx + timeidx] = 0.0;
+  this.end = (this.end + size) % this.max;
+  if(this.end == this.start) this.start = (this.start + size) % this.max;
+}
+
+/**
+ * @function update
+ * Updates the particles
+ * @param {DOMHighResTimeStamp} elapsedTime
+ */
+SmokeParticles.prototype.update = function(elapsedTime) {
+  function updateParticle(idx) {
+    this.pool[idx + xidx] += elapsedTime * this.pool[idx + vxidx];
+    this.pool[idx + yidx] += elapsedTime * this.pool[idx + vyidx];
+    this.pool[idx + timeidx] += elapsedTime;
+    if(this.pool[idx+timeidx] > 2500) this.start = idx;
+  }
+  var start = this.start;
+  for(var i = this.start % this.max; i != this.end % this.max; i = (i + size) % this.max) {
+    updateParticle.call(this, i);
+  }
+}
+
+/**
+ * @function render
+ * Renders all bullets in our array.
+ * @param {DOMHighResTimeStamp} elapsedTime
+ * @param {CanvasRenderingContext2D} ctx
+ */
+SmokeParticles.prototype.render = function(elapsedTime, ctx) {
+  function renderParticle(idx) {
+    var alpha = 1 - (this.pool[idx + timeidx] / 2500);
+    //range the red from grey to full red
+    var red = 100 + Math.floor((255 - 100) * alpha);
+    var other = Math.floor((1 - alpha) * 180);
+    var radius = 0.1 * this.pool[idx + timeidx];
+    if(radius > 5) radius = 5;
+    ctx.beginPath();
+    ctx.arc(
+      this.pool[idx + xidx],   // X position
+      this.pool[idx + yidx], // y position
+      radius, // radius
+      0,
+      2*Math.PI
+    );
+    ctx.fillStyle = 'rgba('+red+','+(other+40)+','+other+',' + alpha + ')';
+    ctx.fill();
+  }
+  for(var i = this.start % this.max; i != this.end % this.max; i = (i + size) % this.max) {
+    renderParticle.call(this, i);
+  }
+}
+
+},{}],9:[function(require,module,exports){
 "use strict";
 
 module.exports = exports = Tile;
@@ -629,7 +767,7 @@ Tile.prototype.render = function(elapasedTime, ctx) {
   ctx.drawImage(this.buffer, 0, 0);
 }
 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 "use strict";
 
 module.exports = exports = Tilemap;
@@ -642,14 +780,16 @@ function Tilemap(img, tx, ty) {
   this.tw = Math.floor(this.img.width / this.tx);
 }
 
-Tilemap.prototype.render = function(idx, ctx) {
+Tilemap.prototype.render = function(idx, ctx, sx, sy) {
+  if(!sx) sx = 0;
+  if(!sy) sy = 0;
   if(!this.tw) this.tw = Math.floor(this.img.width / this.tx);
   var y = Math.floor(idx / this.tw) * this.ty;
   var x = (idx % this.tw) * this.tx;
-  ctx.drawImage(this.img, x, y, this.tx, this.ty, 0, 0, this.tx, this.ty);
+  ctx.drawImage(this.img, x, y, this.tx, this.ty, sx, sy, this.tx, this.ty);
 }
 
-},{}],10:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 "use strict";
 
 /**
@@ -746,4 +886,38 @@ function normalize(a) {
   return {x: a.x / mag, y: a.y / mag};
 }
 
-},{}]},{},[1]);
+},{}],12:[function(require,module,exports){
+"use strict";
+
+module.exports = exports = Wheel;
+const Tilemap = require('./tilemap');
+
+//a class to draw a part of an image
+function Wheel(position) {
+  this.x = position.x;
+  this.y = position.y;
+  this.img = new Image();
+  this.img.src = 'assets/spinny.png';
+  this.tmap = new Tilemap(this.img, 48, 48);
+  this.timer = 0;
+  this.idx = 0;
+}
+
+Wheel.prototype.update = function(elapasedTime, ctx) {
+  this.timer += elapasedTime;
+  if(this.timer > 25) {
+    this.idx++;
+    this.timer = 0;
+  }
+  if(this.idx == 4) this.idx = 0;
+}
+
+Wheel.prototype.render = function(elapasedTime, ctx) {
+  ctx.save();
+  ctx.translate(this.x, this.y); //get paralax
+  //console.log(this.x, this.y, this.idx);
+  this.tmap.render(this.idx, ctx);
+  ctx.restore();
+}
+
+},{"./tilemap":10}]},{},[1]);

@@ -8,16 +8,23 @@ const Player = require('./player');
 const BulletPool = require('./bullet_pool');
 const Cloud = require('./cloud');
 const Background = require('./background');
+const SmokeParticles = require('./smoke_particles')
+const Wheel = require('./wheel');
 
 /* Global variables */
 var canvas = document.getElementById('screen');
 var clouds = [];
-var height = 200000;
+var camera = new Camera(canvas);
+var wheels = [];
+
 for(var i = 0; i < 1000; ++i) {
+  wheels.push(new Wheel({x:Math.random() * 1000, y : -Math.random() * 10000}));
+}
+for(var i = 0; i < 10; ++i) {
   var x = Math.random() * canvas.width;
-  var y = - Math.random() * height + 1000;
+  var y = Math.random() * canvas.height;
   //console.log(x, y);
-  clouds.push(new Cloud({x:x,y:y}));
+  clouds.push(new Cloud({x:x,y:y}, camera));
 }
 var game = new Game(canvas, update, render);
 var input = {
@@ -26,11 +33,12 @@ var input = {
   left: false,
   right: false
 }
-var camera = new Camera(canvas);
+
 var background = new Background(camera);
 var bullets = new BulletPool(10);
 var missiles = [];
 var player = new Player(bullets, missiles);
+var smoke = new SmokeParticles(3000);
 
 /**
  * @function onkeydown
@@ -59,6 +67,22 @@ window.onkeydown = function(event) {
       event.preventDefault();
       break;
   }
+}
+
+function explode(x, y) {
+  for(var i = 0; i < 150; ++i) {
+    var theta = Math.random() * 2 * Math.PI;
+    var mag = Math.random() * 0.1;
+    var vx = mag * Math.cos(theta);
+    var vy = mag * Math.sin(theta);
+    smoke.emit({x:x + player.position.x, y:y + player.position.y}, {x:vx, y:vy});
+  }
+}
+
+window.onclick = function(event) {
+  var x = event.pageX - canvas.offsetLeft,
+      y = event.pageY - canvas.offsetTop;
+  explode(x, y);
 }
 
 /**
@@ -115,7 +139,7 @@ masterLoop(performance.now());
  * the number of milliseconds passed since the last frame.
  */
 function update(elapsedTime) {
-
+  smoke.update(elapsedTime);
   // update the player
   player.update(elapsedTime, input);
 
@@ -124,6 +148,9 @@ function update(elapsedTime) {
   camera.update(player.position);
   clouds.forEach(function(cloud) {
     cloud.update(elapsedTime);
+  });
+  wheels.forEach(function(wheel) {
+    wheel.update(elapsedTime);
   });
   // Update bullets
   bullets.update(elapsedTime, function(bullet){
@@ -174,17 +201,18 @@ function renderWorld(elapsedTime, ctx) {
     background.render(elapsedTime, ctx);
     // Render the bullets
     bullets.render(elapsedTime, ctx);
-    clouds.forEach(function(cloud) {
-      if(camera.onScreen(cloud)) cloud.render(elapsedTime, ctx);
-      //console.log(cloud);
+    //render particle effects
+    smoke.render(elapsedTime, ctx);
+    wheels.forEach(function(wheel) {
+      if(camera.onScreen(wheel)) wheel.render(elapsedTime, ctx);
     });
-    // Render the missiles
-    missiles.forEach(function(missile) {
-      missile.render(elapsedTime, ctx);
-    });
-
     // Render the player
     player.render(elapsedTime, ctx);
+    //render clouds on top of everything to remove information
+    //from the player
+    clouds.forEach(function(cloud) {
+      if(camera.onScreen(cloud)) cloud.render(elapsedTime, ctx);
+    });
 }
 
 /**

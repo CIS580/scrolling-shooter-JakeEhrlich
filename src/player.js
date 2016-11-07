@@ -20,11 +20,9 @@ module.exports = exports = Player;
  * Creates a player
  * @param {BulletPool} bullets the bullet pool
  */
-function Player(bullets, missiles) {
+function Player(bullets, fire) {
   this.offx = 300;
   this.offy = 500;
-  this.missiles = missiles;
-  this.missileCount = 4;
   this.bullets = bullets;
   this.angle = 0;
   this.position = {x: 0, y: 0};
@@ -63,9 +61,9 @@ Player.prototype.update = function(elapsedTime, input) {
 
   // don't let the player move off-screen
   if(this.offx < 0) this.offx = 0;
-  if(this.offx > 1024) this.offx = 1024;
+  if(this.offx > 1024 - 24) this.offx = 1024 - 24;
   if(this.offy < 0) this.offy = 0;
-  if(this.offx > 786) this.offy = 786;
+  if(this.offy > 786 - 24) this.offy = 786 - 24;
 }
 
 /**

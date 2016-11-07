@@ -7,36 +7,41 @@
  */
 module.exports = exports = SmokeParticles;
 
+const xidx = 0;
+const yidx = 1;
+const vxidx = 2;
+const vyidx = 3;
+const timeidx = 4;
+const size = 5;
+
 /**
  * @constructor SmokeParticles
  * Creates a SmokeParticles engine of the specified size
  * @param {uint} size the maximum number of particles to exist concurrently
  */
 function SmokeParticles(maxSize) {
-  this.pool = new Float32Array(3 * maxSize);
+  this.pool = new Float32Array(size * maxSize);
   this.start = 0;
   this.end = 0;
-  this.wrapped = false;
-  this.max = maxSize;
+  this.max = size * maxSize;
 }
+
+
 
 /**
  * @function emit
  * Adds a new particle at the given position
  * @param {Vector} position
 */
-SmokeParticles.prototype.emit = function(position) {
-  if(this.end != this.max) {
-    this.pool[3*this.end] = position.x;
-    this.pool[3*this.end+1] = position.y;
-    this.pool[3*this.end+2] = 0.0;
-    this.end++;
-  } else {
-    this.pool[3] = position.x;
-    this.pool[4] = position.y;
-    this.pool[5] = 0.0;
-    this.end = 1;
-  }
+SmokeParticles.prototype.emit = function(position, vol) {
+  var idx = this.end % this.max;
+  this.pool[idx + xidx] = position.x;
+  this.pool[idx + yidx] = position.y;
+  this.pool[idx + vxidx] = vol.x;
+  this.pool[idx + vyidx] = vol.y;
+  this.pool[idx + timeidx] = 0.0;
+  this.end = (this.end + size) % this.max;
+  if(this.end == this.start) this.start = (this.start + size) % this.max;
 }
 
 /**
@@ -45,22 +50,15 @@ SmokeParticles.prototype.emit = function(position) {
  * @param {DOMHighResTimeStamp} elapsedTime
  */
 SmokeParticles.prototype.update = function(elapsedTime) {
-  function updateParticle(i) {
-    this.pool[3*i+2] += elapsedTime;
-    if(this.pool[3*i+2] > 2000) this.start = i;
+  function updateParticle(idx) {
+    this.pool[idx + xidx] += elapsedTime * this.pool[idx + vxidx];
+    this.pool[idx + yidx] += elapsedTime * this.pool[idx + vyidx];
+    this.pool[idx + timeidx] += elapsedTime;
+    if(this.pool[idx+timeidx] > 2500) this.start = idx;
   }
-  var i;
-  if(this.wrapped) {
-    for(i = 0; i < this.end; i++){
-      updateParticle.call(this, i);
-    }
-    for(i = this.start; i < this.max; i++){
-      updateParticle.call(this, i);
-    }
-  } else {
-    for(i = this.start; i < this.end; i++) {
-      updateParticle.call(this, i);
-    }
+  var start = this.start;
+  for(var i = this.start % this.max; i != this.end % this.max; i = (i + size) % this.max) {
+    updateParticle.call(this, i);
   }
 }
 
@@ -71,34 +69,25 @@ SmokeParticles.prototype.update = function(elapsedTime) {
  * @param {CanvasRenderingContext2D} ctx
  */
 SmokeParticles.prototype.render = function(elapsedTime, ctx) {
-  function renderParticle(i){
-    var alpha = 1 - (this.pool[3*i+2] / 1000);
-    var radius = 0.1 * this.pool[3*i+2];
+  function renderParticle(idx) {
+    var alpha = 1 - (this.pool[idx + timeidx] / 2500);
+    //range the red from grey to full red
+    var red = 100 + Math.floor((255 - 100) * alpha);
+    var other = Math.floor((1 - alpha) * 180);
+    var radius = 0.1 * this.pool[idx + timeidx];
     if(radius > 5) radius = 5;
     ctx.beginPath();
     ctx.arc(
-      this.pool[3*i],   // X position
-      this.pool[3*i+1], // y position
+      this.pool[idx + xidx],   // X position
+      this.pool[idx + yidx], // y position
       radius, // radius
       0,
       2*Math.PI
     );
-    ctx.fillStyle = 'rgba(160, 160, 160,' + alpha + ')';
+    ctx.fillStyle = 'rgba('+red+','+(other+40)+','+other+',' + alpha + ')';
     ctx.fill();
   }
-
-  // Render the particles individually
-  var i;
-  if(this.wrapped) {
-    for(i = 0; i < this.end; i++){
-      renderParticle.call(this, i);
-    }
-    for(i = this.start; i < this.max; i++){
-      renderParticle.call(this, i);
-    }
-  } else {
-    for(i = this.start; i < this.end; i++) {
-      renderParticle.call(this, i);
-    }
+  for(var i = this.start % this.max; i != this.end % this.max; i = (i + size) % this.max) {
+    renderParticle.call(this, i);
   }
 }
