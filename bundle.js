@@ -7,10 +7,19 @@ const Vector = require('./vector');
 const Camera = require('./camera');
 const Player = require('./player');
 const BulletPool = require('./bullet_pool');
-
+const Cloud = require('./cloud');
+const Background = require('./background');
 
 /* Global variables */
 var canvas = document.getElementById('screen');
+var clouds = [];
+var height = 200000;
+for(var i = 0; i < 1000; ++i) {
+  var x = Math.random() * canvas.width;
+  var y = - Math.random() * height + 1000;
+  //console.log(x, y);
+  clouds.push(new Cloud({x:x,y:y}));
+}
 var game = new Game(canvas, update, render);
 var input = {
   up: false,
@@ -19,6 +28,7 @@ var input = {
   right: false
 }
 var camera = new Camera(canvas);
+var background = new Background(camera);
 var bullets = new BulletPool(10);
 var missiles = [];
 var player = new Player(bullets, missiles);
@@ -60,6 +70,7 @@ window.onkeyup = function(event) {
   switch(event.key) {
     case "Space":
     case " ":
+      //console.log("got here!");
       player.fireBullet({x:0, y:-1});
       break;
     case "ArrowUp":
@@ -110,24 +121,18 @@ function update(elapsedTime) {
   player.update(elapsedTime, input);
 
   // update the camera
+  player.position.y -= 0.1 * elapsedTime;
   camera.update(player.position);
-
+  clouds.forEach(function(cloud) {
+    cloud.update(elapsedTime);
+  });
   // Update bullets
   bullets.update(elapsedTime, function(bullet){
-    if(!camera.onScreen(bullet)) return true;
+    if(!camera.onScreen(bullet)) {
+      //console.log("removed!");
+      return true;
+    }
     return false;
-  });
-
-  // Update missiles
-  var markedForRemoval = [];
-  missiles.forEach(function(missile, i){
-    missile.update(elapsedTime);
-    if(Math.abs(missile.position.x - camera.x) > camera.width * 2)
-      markedForRemoval.unshift(i);
-  });
-  // Remove missiles that have gone off-screen
-  markedForRemoval.forEach(function(index){
-    missiles.splice(index, 1);
   });
 }
 
@@ -167,9 +172,13 @@ function render(elapsedTime, ctx) {
   * @param {CanvasRenderingContext2D} ctx the context to render to
   */
 function renderWorld(elapsedTime, ctx) {
+    background.render(elapsedTime, ctx);
     // Render the bullets
     bullets.render(elapsedTime, ctx);
-
+    clouds.forEach(function(cloud) {
+      if(camera.onScreen(cloud)) cloud.render(elapsedTime, ctx);
+      //console.log(cloud);
+    });
     // Render the missiles
     missiles.forEach(function(missile) {
       missile.render(elapsedTime, ctx);
@@ -189,7 +198,43 @@ function renderGUI(elapsedTime, ctx) {
   // TODO: Render the GUI
 }
 
-},{"./bullet_pool":2,"./camera":3,"./game":4,"./player":5,"./vector":7}],2:[function(require,module,exports){
+},{"./background":2,"./bullet_pool":3,"./camera":4,"./cloud":5,"./game":6,"./player":7,"./vector":10}],2:[function(require,module,exports){
+"use strict";
+
+module.exports = exports = Background;
+
+/* Classes and Libraries */
+const Tilemap = require('./tilemap');
+
+//a class to efficently draw a background
+//this is tricky because we want the background to move
+//it only has to move a little however
+//more over we want the background to draw *very* efficently because its
+//the biggest thing we have to draw and just look how much the measly clouds
+//slowed us down!
+function Background(camera) {
+  this.img = new Image();
+  this.img.src = 'assets/shapesy.png';
+  this.tx = 24;
+  this.ty = 28;
+  this.tmap = new Tilemap(this.img, this.tx, this.ty);
+  this.camera = camera;
+}
+
+Background.prototype.render = function(elapasedTime, ctx) {
+  //loop over the bounds
+  for(var i = -1; i * this.tx <= this.camera.width; ++i) {
+    for(var j = -1; j * this.ty <= this.camera.height; ++j) {
+      ctx.save();
+      var cy = Math.floor(this.camera.y / this.ty) * this.ty;
+      ctx.translate(i*this.tx, j*this.ty + cy); //count act camera
+      this.tmap.render(24, ctx); //draw plane water
+      ctx.restore();
+    }
+  }
+}
+
+},{"./tilemap":9}],3:[function(require,module,exports){
 "use strict";
 
 /**
@@ -281,6 +326,7 @@ BulletPool.prototype.render = function(elapsedTime, ctx) {
   ctx.beginPath();
   ctx.fillStyle = "white";
   for(var i = 0; i < this.end; i++) {
+    //console.log("bullet!");
     ctx.moveTo(this.pool[4*i], this.pool[4*i+1]);
     ctx.arc(this.pool[4*i], this.pool[4*i+1], 2, 0, 2*Math.PI);
   }
@@ -288,7 +334,7 @@ BulletPool.prototype.render = function(elapsedTime, ctx) {
   ctx.restore();
 }
 
-},{}],3:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 "use strict";
 
 /* Classes and Libraries */
@@ -318,7 +364,7 @@ function Camera(screen) {
  * @param {Vector} target what the camera is looking at
  */
 Camera.prototype.update = function(target) {
-  // TODO: Align camera with player
+  this.y = target.y;
 }
 
 /**
@@ -328,10 +374,11 @@ Camera.prototype.update = function(target) {
  * @return true if target is on-screen, false if not
  */
 Camera.prototype.onScreen = function(target) {
+  var height = target.height ? target.height : 0;
   return (
      target.x > this.x &&
      target.x < this.x + this.width &&
-     target.y > this.y &&
+     target.y + height > this.y &&
      target.y < this.y + this.height
    );
 }
@@ -356,7 +403,36 @@ Camera.prototype.toWorldCoordinates = function(screenCoordinates) {
   return Vector.add(screenCoordinates, this);
 }
 
-},{"./vector":7}],4:[function(require,module,exports){
+},{"./vector":10}],5:[function(require,module,exports){
+"use strict";
+
+module.exports = exports = Cloud;
+const Tile = require('./tile');
+
+//a class to draw a part of an image
+function Cloud(position) {
+  this.x = position.x;
+  this.y = position.y;
+  var tile = {x:80, y:305, width:170-80, height:460-305, scaleX:170-80, scaleY:460-305};
+  this.width = tile.width;
+  this.height = tile.height;
+  this.img = new Image();
+  this.img.src = 'assets/shapesy.png';
+  this.tile = new Tile(tile, this.img);
+}
+
+Cloud.prototype.update = function(elapasedTime, ctx) {
+  this.y += 0.05 * elapasedTime;
+}
+
+Cloud.prototype.render = function(elapasedTime, ctx) {
+  ctx.save();
+  ctx.translate(this.x, this.y); //get paralax
+  this.tile.render(elapasedTime, ctx);
+  ctx.restore();
+}
+
+},{"./tile":8}],6:[function(require,module,exports){
 "use strict";
 
 /**
@@ -414,7 +490,7 @@ Game.prototype.loop = function(newTime) {
   this.frontCtx.drawImage(this.backBuffer, 0, 0);
 }
 
-},{}],5:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 "use strict";
 
 /* Classes and Libraries */
@@ -438,17 +514,18 @@ module.exports = exports = Player;
  * @param {BulletPool} bullets the bullet pool
  */
 function Player(bullets, missiles) {
+  this.offx = 300;
+  this.offy = 500;
   this.missiles = missiles;
   this.missileCount = 4;
   this.bullets = bullets;
   this.angle = 0;
-  this.position = {x: 200, y: 200};
+  this.position = {x: 0, y: 0};
   this.velocity = {x: 0, y: 0};
-  this.img = new Image()
-  this.img.crossOrigin = "anonymous";
-  this.img.src = 'assets/tyrian.shp.007D3C.png';
+  this.img = new Image();
+  this.img.src = 'assets/tyrian.shp.007.png';
   //color key is oddly #BFDCBF
-  this.tile = new Tile({x:48,y:57,width:23,height:23,scaleX:23,scaleY:27}, this.img, [0xbf, 0xdc, 0xbf]);
+  this.tile = new Tile({x:48,y:57,width:23,height:23,scaleX:23,scaleY:27}, this.img);
 }
 
 /**
@@ -474,13 +551,14 @@ Player.prototype.update = function(elapsedTime, input) {
   if(this.velocity.x > 0) this.angle = 1;
 
   // move the player
-  this.position.x += this.velocity.x;
-  this.position.y += this.velocity.y;
+  this.offx += this.velocity.x;
+  this.offy += this.velocity.y;
 
   // don't let the player move off-screen
-  if(this.position.x < 0) this.position.x = 0;
-  if(this.position.x > 1024) this.position.x = 1024;
-  if(this.position.y > 786) this.position.y = 786;
+  if(this.offx < 0) this.offx = 0;
+  if(this.offx > 1024) this.offx = 1024;
+  if(this.offy < 0) this.offy = 0;
+  if(this.offx > 786) this.offy = 786;
 }
 
 /**
@@ -492,7 +570,7 @@ Player.prototype.update = function(elapsedTime, input) {
 Player.prototype.render = function(elapasedTime, ctx) {
   var offset = this.angle * 23;
   ctx.save();
-  ctx.translate(this.position.x, this.position.y);
+  ctx.translate(this.position.x + this.offx, this.position.y + this.offy);
   //ctx.drawImage(this.img, 48+offset, 57, 23, 27, 0, 0, 23, 27);
   this.tile.render(elapasedTime, ctx);
   ctx.restore();
@@ -504,9 +582,10 @@ Player.prototype.render = function(elapasedTime, ctx) {
  * @param {Vector} direction
  */
 Player.prototype.fireBullet = function(direction) {
-  var position = Vector.add(this.position, {x:12, y:0});
+  var position = Vector.add(this.position, {x:12+this.offx, y:this.offy});
   var velocity = Vector.scale(Vector.normalize(direction), BULLET_SPEED);
   this.bullets.add(position, velocity);
+  console.log("got here!");
 }
 
 /**
@@ -523,12 +602,10 @@ Player.prototype.fireMissile = function() {
   }
 }
 
-},{"./tile":6,"./vector":7}],6:[function(require,module,exports){
+},{"./tile":8,"./vector":10}],8:[function(require,module,exports){
 "use strict";
 
 module.exports = exports = Tile;
-
-
 
 //a class to draw a part of an image
 function Tile(tile, img, colorkey) {
@@ -541,38 +618,38 @@ function Tile(tile, img, colorkey) {
   this.buffer.height = tile.height;
   this.ctx = this.buffer.getContext('2d');
   this.drawn = false;
-  //this.ctx.drawImage(this.img, 48+offset, 57, 23, 27, 0, 0, 23, 27);
-
-  //the used sprites use color keys not alpha so I have to do this
-  var self = this;
-  this.onload = function() {
-    if(colorkey) {
-      console.log("colorkeying!");
-      var imgdata = self.ctx.getImageData(0, 0, self.width, self.height);
-      var data = imgdata.data;
-      for(var i = 0; i < data.length; ++i) {
-        if(data[0] === colorkey[0] && data[1] === colorkey[1] && data[2] === colorkey[2]) {
-          data[4] = 0;
-        }
-      }
-      self.ctx.putImageData(imgdata, 0, 0);
-    }
-  }
 }
 
 Tile.prototype.render = function(elapasedTime, ctx) {
   if(this.img.complete && !this.drawn) {
     var tile = this.tile;
     this.ctx.drawImage(this.img, tile.x, tile.y, tile.width, tile.height, 0, 0, tile.scaleX, tile.scaleY);
-    this.onload();
   }
-  //console.log("got here!");
-  var tile = this.tile;
   //ctx.drawImage(this.img, tile.x, tile.y, tile.width, tile.height, 0, 0, tile.scaleX, tile.scaleY);
   ctx.drawImage(this.buffer, 0, 0);
 }
 
-},{}],7:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
+"use strict";
+
+module.exports = exports = Tilemap;
+
+//a class to draw a part of an image
+function Tilemap(img, tx, ty) {
+  this.img = img;
+  this.tx = tx;
+  this.ty = ty;
+  this.tw = Math.floor(this.img.width / this.tx);
+}
+
+Tilemap.prototype.render = function(idx, ctx) {
+  if(!this.tw) this.tw = Math.floor(this.img.width / this.tx);
+  var y = Math.floor(idx / this.tw) * this.ty;
+  var x = (idx % this.tw) * this.tx;
+  ctx.drawImage(this.img, x, y, this.tx, this.ty, 0, 0, this.tx, this.ty);
+}
+
+},{}],10:[function(require,module,exports){
 "use strict";
 
 /**

@@ -6,10 +6,19 @@ const Vector = require('./vector');
 const Camera = require('./camera');
 const Player = require('./player');
 const BulletPool = require('./bullet_pool');
-
+const Cloud = require('./cloud');
+const Background = require('./background');
 
 /* Global variables */
 var canvas = document.getElementById('screen');
+var clouds = [];
+var height = 200000;
+for(var i = 0; i < 1000; ++i) {
+  var x = Math.random() * canvas.width;
+  var y = - Math.random() * height + 1000;
+  //console.log(x, y);
+  clouds.push(new Cloud({x:x,y:y}));
+}
 var game = new Game(canvas, update, render);
 var input = {
   up: false,
@@ -18,6 +27,7 @@ var input = {
   right: false
 }
 var camera = new Camera(canvas);
+var background = new Background(camera);
 var bullets = new BulletPool(10);
 var missiles = [];
 var player = new Player(bullets, missiles);
@@ -59,6 +69,7 @@ window.onkeyup = function(event) {
   switch(event.key) {
     case "Space":
     case " ":
+      //console.log("got here!");
       player.fireBullet({x:0, y:-1});
       break;
     case "ArrowUp":
@@ -109,24 +120,18 @@ function update(elapsedTime) {
   player.update(elapsedTime, input);
 
   // update the camera
+  player.position.y -= 0.1 * elapsedTime;
   camera.update(player.position);
-
+  clouds.forEach(function(cloud) {
+    cloud.update(elapsedTime);
+  });
   // Update bullets
   bullets.update(elapsedTime, function(bullet){
-    if(!camera.onScreen(bullet)) return true;
+    if(!camera.onScreen(bullet)) {
+      //console.log("removed!");
+      return true;
+    }
     return false;
-  });
-
-  // Update missiles
-  var markedForRemoval = [];
-  missiles.forEach(function(missile, i){
-    missile.update(elapsedTime);
-    if(Math.abs(missile.position.x - camera.x) > camera.width * 2)
-      markedForRemoval.unshift(i);
-  });
-  // Remove missiles that have gone off-screen
-  markedForRemoval.forEach(function(index){
-    missiles.splice(index, 1);
   });
 }
 
@@ -166,9 +171,13 @@ function render(elapsedTime, ctx) {
   * @param {CanvasRenderingContext2D} ctx the context to render to
   */
 function renderWorld(elapsedTime, ctx) {
+    background.render(elapsedTime, ctx);
     // Render the bullets
     bullets.render(elapsedTime, ctx);
-
+    clouds.forEach(function(cloud) {
+      if(camera.onScreen(cloud)) cloud.render(elapsedTime, ctx);
+      //console.log(cloud);
+    });
     // Render the missiles
     missiles.forEach(function(missile) {
       missile.render(elapsedTime, ctx);

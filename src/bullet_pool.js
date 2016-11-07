@@ -89,6 +89,7 @@ BulletPool.prototype.render = function(elapsedTime, ctx) {
   ctx.beginPath();
   ctx.fillStyle = "white";
   for(var i = 0; i < this.end; i++) {
+    //console.log("bullet!");
     ctx.moveTo(this.pool[4*i], this.pool[4*i+1]);
     ctx.arc(this.pool[4*i], this.pool[4*i+1], 2, 0, 2*Math.PI);
   }

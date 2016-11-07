@@ -27,7 +27,7 @@ function Camera(screen) {
  * @param {Vector} target what the camera is looking at
  */
 Camera.prototype.update = function(target) {
-  // TODO: Align camera with player
+  this.y = target.y;
 }
 
 /**
@@ -37,10 +37,11 @@ Camera.prototype.update = function(target) {
  * @return true if target is on-screen, false if not
  */
 Camera.prototype.onScreen = function(target) {
+  var height = target.height ? target.height : 0;
   return (
      target.x > this.x &&
      target.x < this.x + this.width &&
-     target.y > this.y &&
+     target.y + height > this.y &&
      target.y < this.y + this.height
    );
 }
