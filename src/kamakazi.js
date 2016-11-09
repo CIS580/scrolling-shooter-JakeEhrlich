@@ -1,6 +1,6 @@
 "use strict";
 
-module.exports = exports = Wheel;
+module.exports = exports = Kamakazi;
 const Tilemap = require('./tilemap');
 
 function explode(smoke, x, y) {
@@ -14,43 +14,45 @@ function explode(smoke, x, y) {
 }
 
 //a class to draw a part of an image
-function Wheel(position, player, smoke) {
-  this.player = player;
-  this.health = 100;
+function Kamakazi(position, player, smoke) {
+  this.health = 50;
   this.smoke = smoke;
   this.x = position.x;
   this.y = position.y;
-  this.width = 48;
-  this.height = 48;
+  this.width = 24;
+  this.height = 28;
   this.img = new Image();
-  this.img.src = 'assets/spinny.png';
-  this.tmap = new Tilemap(this.img, 48, 48);
+  this.img.src = 'assets/ships.png';
+  this.tmap = new Tilemap(this.img, 24, 28);
   this.timer = 0;
   this.idx = 0;
+  this.player = player;
 }
 
-Wheel.prototype.update = function(elapasedTime, ctx) {
-  this.y += 0.05 * elapasedTime;
-  this.timer += elapasedTime;
-  if(this.timer > 25) {
-    this.idx++;
-    this.timer = 0;
+Kamakazi.prototype.update = function(elapasedTime, ctx) {
+  //console.log(this.player);
+  var px = this.player.position.x + this.player.offx;
+  var py = this.player.position.y + this.player.offy;
+//  console.log(px, py);
+  if(this.player.position.y - this.y < 500) {
+    this.x += 0.1 * elapasedTime * Math.sign(px - this.x);
+    this.y += 0.2 * elapasedTime;
   }
-  if(this.idx == 4) this.idx = 0;
+
   var py = this.player.position.y + this.player.offy;
   var px = this.player.position.x + this.player.offx;
   if(px > this.x && py > this.y && px < this.x + this.width && py < this.y + this.height) {
     explode(this.smoke, this.x, this.y);
-    this.player.health -= 50;
+    this.player.health -= 20;
     return true;
   }
-  return this.health < 0;
+  return this.health <= 0;
 }
 
-Wheel.prototype.render = function(elapasedTime, ctx) {
+Kamakazi.prototype.render = function(elapasedTime, ctx) {
   ctx.save();
   ctx.translate(this.x, this.y); //get paralax
   //console.log(this.x, this.y, this.idx);
-  this.tmap.render(this.idx, ctx);
+  this.tmap.render(47, ctx);
   ctx.restore();
 }

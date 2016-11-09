@@ -21,6 +21,7 @@ module.exports = exports = Player;
  * @param {BulletPool} bullets the bullet pool
  */
 function Player(bullets, fire) {
+  this.health = 100;
   this.offx = 300;
   this.offy = 500;
   this.bullets = bullets;
@@ -31,6 +32,9 @@ function Player(bullets, fire) {
   this.img.src = 'assets/tyrian.shp.007.png';
   //color key is oddly #BFDCBF
   this.tile = new Tile({x:48,y:57,width:23,height:23,scaleX:23,scaleY:27}, this.img);
+  var self = this;
+  this.fire = function() { self.fireBullet(); };
+  this.state = "live";
 }
 
 /**
@@ -41,7 +45,6 @@ function Player(bullets, fire) {
  * boolean properties: up, left, right, down
  */
 Player.prototype.update = function(elapsedTime, input) {
-
   // set the velocity
   this.velocity.x = 0;
   if(input.left) this.velocity.x -= PLAYER_SPEED;
@@ -64,6 +67,18 @@ Player.prototype.update = function(elapsedTime, input) {
   if(this.offx > 1024 - 24) this.offx = 1024 - 24;
   if(this.offy < 0) this.offy = 0;
   if(this.offy > 786 - 24) this.offy = 786 - 24;
+
+  return this.health > 0;
+}
+
+function drawStroked(ctx, text, x, y) {
+    ctx.font = "48px impact"
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 8;
+    ctx.strokeText(text, x, y);
+    ctx.font = "48px impact"
+    ctx.fillStyle = 'white';
+    ctx.fillText(text, x, y);
 }
 
 /**
@@ -73,6 +88,13 @@ Player.prototype.update = function(elapsedTime, input) {
  * @param {CanvasRenderingContext2D} ctx
  */
 Player.prototype.render = function(elapasedTime, ctx) {
+  if(this.health <= 0) {
+    ctx.save();
+    ctx.resetTransform();
+    drawStroked(ctx, "YOU DIED", 410, 420);
+    ctx.restore();
+    return;
+  }
   var offset = this.angle * 23;
   ctx.save();
   ctx.translate(this.position.x + this.offx, this.position.y + this.offy);
@@ -86,11 +108,37 @@ Player.prototype.render = function(elapasedTime, ctx) {
  * Fires a bullet
  * @param {Vector} direction
  */
-Player.prototype.fireBullet = function(direction) {
+Player.prototype.fireBullet = function() {
   var position = Vector.add(this.position, {x:12+this.offx, y:this.offy});
-  var velocity = Vector.scale(Vector.normalize(direction), BULLET_SPEED);
+  var velocity = Vector.scale({x:0, y:-1}, BULLET_SPEED);
   this.bullets.add(position, velocity);
-  console.log("got here!");
+}
+
+Player.prototype.fireTriBullet = function(direction) {
+  var position = Vector.add(this.position, {x:12+this.offx, y:this.offy});
+  var velocity = Vector.scale({x:0, y:-1}, BULLET_SPEED);
+  this.bullets.add(position, velocity);
+  var velocity = Vector.scale({x:0.5, y:-1}, BULLET_SPEED);
+  this.bullets.add(position, velocity);
+  var velocity = Vector.scale({x:-0.5, y:-1}, BULLET_SPEED);
+  this.bullets.add(position, velocity);
+}
+
+Player.prototype.fireQuadBullet = function(direction) {
+  var position = Vector.add(this.position, {x:12+this.offx, y:this.offy});
+  var velocity = Vector.scale({x:0, y:1}, BULLET_SPEED);
+  this.bullets.add(position, velocity);
+  var velocity = Vector.scale({x:0, y:-1}, BULLET_SPEED);
+  this.bullets.add(position, velocity);
+  var velocity = Vector.scale({x:-1, y:0}, BULLET_SPEED);
+  this.bullets.add(position, velocity);
+  var velocity = Vector.scale({x:1, y:0}, BULLET_SPEED);
+  this.bullets.add(position, velocity);
+}
+
+Player.prototype.fireMegaBullet = function(direction) {
+  this.fireTriBullet();
+  this.fireQuadBullet();
 }
 
 /**

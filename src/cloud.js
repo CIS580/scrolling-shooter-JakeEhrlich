@@ -17,7 +17,7 @@ function Cloud(position, camera) {
 }
 
 Cloud.prototype.update = function(elapasedTime, ctx) {
-  this.y += 0.05 * elapasedTime;
+  this.y += 0.1 * elapasedTime;
   if(this.y > this.camera.y + this.camera.height) {
     this.x = Math.random() * 1000;
     this.y = this.camera.y - 120 - Math.random() * (800 - 120);

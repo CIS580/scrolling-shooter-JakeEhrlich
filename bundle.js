@@ -11,16 +11,20 @@ const Cloud = require('./cloud');
 const Background = require('./background');
 const SmokeParticles = require('./smoke_particles')
 const Wheel = require('./wheel');
+const Kamakazi = require('./kamakazi');
+const Sine = require('./sine');
+const Turret = require('./turret');
+const Kreeper = require('./kreeper');
+const Powerup = require('./powerup');
+const Level1 = require('./level1');
+const Level2 = require('./level2');
+const Level0 = require('./level0');
 
 /* Global variables */
 var canvas = document.getElementById('screen');
 var clouds = [];
 var camera = new Camera(canvas);
-var wheels = [];
-
-for(var i = 0; i < 1000; ++i) {
-  wheels.push(new Wheel({x:Math.random() * 1000, y : -Math.random() * 10000}));
-}
+var bads = [];
 for(var i = 0; i < 10; ++i) {
   var x = Math.random() * canvas.width;
   var y = Math.random() * canvas.height;
@@ -36,11 +40,33 @@ var input = {
 }
 
 var background = new Background(camera);
-var bullets = new BulletPool(10);
+var bullets = new BulletPool(60);
+var badbullets = new BulletPool(500);
 var missiles = [];
 var player = new Player(bullets, missiles);
 var smoke = new SmokeParticles(3000);
-
+var level = new Level0(bads, player, smoke, badbullets);
+function tri() {
+  player.fireTriBullet();
+}
+function quad() {
+  player.fireQuadBullet();
+}
+function mega() {
+  player.fireMegaBullet();
+}
+for(var i = 0; i < 10; ++i) {
+  var pos = {x:Math.random() * 1000, y : -Math.random() * 10000};
+  bads.push(new Powerup(pos, 1, tri, player));
+}
+for(var i = 0; i < 20; ++i) {
+  var pos = {x:Math.random() * 1000, y : -Math.random() * 10000};
+  bads.push(new Powerup(pos, 0, quad, player));
+}
+for(var i = 0; i < 1; ++i) {
+  var pos = {x:Math.random() * 1000, y : -Math.random() * 10000};
+  bads.push(new Powerup(pos, 2, mega, player));
+}
 /**
  * @function onkeydown
  * Handles keydown events
@@ -71,7 +97,7 @@ window.onkeydown = function(event) {
 }
 
 function explode(x, y) {
-  for(var i = 0; i < 150; ++i) {
+  for(var i = 0; i < 50; ++i) {
     var theta = Math.random() * 2 * Math.PI;
     var mag = Math.random() * 0.1;
     var vx = mag * Math.cos(theta);
@@ -79,13 +105,6 @@ function explode(x, y) {
     smoke.emit({x:x + player.position.x, y:y + player.position.y}, {x:vx, y:vy});
   }
 }
-
-window.onclick = function(event) {
-  var x = event.pageX - canvas.offsetLeft,
-      y = event.pageY - canvas.offsetTop;
-  explode(x, y);
-}
-
 /**
  * @function onkeyup
  * Handles keydown events
@@ -95,7 +114,7 @@ window.onkeyup = function(event) {
     case "Space":
     case " ":
       //console.log("got here!");
-      player.fireBullet({x:0, y:-1});
+      player.fire();
       break;
     case "ArrowUp":
     case "w":
@@ -131,6 +150,8 @@ var masterLoop = function(timestamp) {
 }
 masterLoop(performance.now());
 
+
+var onscreen = [];
 /**
  * @function update
  * Updates the game state, moving
@@ -142,25 +163,61 @@ masterLoop(performance.now());
 function update(elapsedTime) {
   smoke.update(elapsedTime);
   // update the player
-  player.update(elapsedTime, input);
+  if(!player.update(elapsedTime, input)) {
+    clouds = []; //show player where stuff was
+  }
 
   // update the camera
   player.position.y -= 0.1 * elapsedTime;
   camera.update(player.position);
-  clouds.forEach(function(cloud) {
+  clouds.forEach(function(cloud) {file:///home/jake/Games/scrolling-shooter-JakeEhrlich/index.html
     cloud.update(elapsedTime);
   });
-  wheels.forEach(function(wheel) {
-    wheel.update(elapsedTime);
+  var keep = [];
+  onscreen = [];
+  bads.forEach(function(bad) {
+    if(!bad.update(elapsedTime)) {
+       keep.push(bad);
+    }
+    if(camera.onScreen(bad)) onscreen.push(bad);
   });
+  bads = keep;
   // Update bullets
   bullets.update(elapsedTime, function(bullet){
+    var good = true;
+    onscreen.forEach(function(bad) {
+      if(bullet.x > bad.x && bullet.y > bad.y && bullet.x < bad.x + bad.width && bullet.y < bad.y + bad.height) {
+        bad.health -= 10;
+        good = false;
+      }
+    });
+    if(!good) return true;
     if(!camera.onScreen(bullet)) {
       //console.log("removed!");
       return true;
     }
     return false;
   });
+  badbullets.update(elapsedTime, function(bullet){
+    var py = player.position.y + player.offy;
+    var px = player.position.x + player.offx;
+    var pw = 28;
+    var ph = 28;
+    //console.log(py, px, pw, ph);
+    if(bullet.x > px && bullet.y > py && bullet.x < px + pw && bullet.y < py + ph) {
+
+      player.health -= 1;
+
+      return true;
+    }
+    if(!camera.onScreen(bullet)) {
+      //console.log("removed!");
+      return true;
+    }
+    return false;
+  });
+
+  level = level.update(bads);
 }
 
 /**
@@ -202,10 +259,11 @@ function renderWorld(elapsedTime, ctx) {
     background.render(elapsedTime, ctx);
     // Render the bullets
     bullets.render(elapsedTime, ctx);
+    badbullets.render(elapsedTime, ctx);
     //render particle effects
     smoke.render(elapsedTime, ctx);
-    wheels.forEach(function(wheel) {
-      if(camera.onScreen(wheel)) wheel.render(elapsedTime, ctx);
+    bads.forEach(function(bad) {
+      if(camera.onScreen(bad)) bad.render(elapsedTime, ctx);
     });
     // Render the player
     player.render(elapsedTime, ctx);
@@ -226,7 +284,7 @@ function renderGUI(elapsedTime, ctx) {
   // TODO: Render the GUI
 }
 
-},{"./background":2,"./bullet_pool":3,"./camera":4,"./cloud":5,"./game":6,"./player":7,"./smoke_particles":8,"./vector":11,"./wheel":12}],2:[function(require,module,exports){
+},{"./background":2,"./bullet_pool":3,"./camera":4,"./cloud":5,"./game":6,"./kamakazi":7,"./kreeper":8,"./level0":9,"./level1":10,"./level2":11,"./player":12,"./powerup":13,"./sine":14,"./smoke_particles":15,"./turret":18,"./vector":19,"./wheel":20}],2:[function(require,module,exports){
 "use strict";
 
 module.exports = exports = Background;
@@ -274,7 +332,7 @@ Background.prototype.render = function(elapasedTime, ctx) {
   }*/
 }
 
-},{"./tilemap":10}],3:[function(require,module,exports){
+},{"./tilemap":17}],3:[function(require,module,exports){
 "use strict";
 
 /**
@@ -443,7 +501,7 @@ Camera.prototype.toWorldCoordinates = function(screenCoordinates) {
   return Vector.add(screenCoordinates, this);
 }
 
-},{"./vector":11}],5:[function(require,module,exports){
+},{"./vector":19}],5:[function(require,module,exports){
 "use strict";
 
 module.exports = exports = Cloud;
@@ -463,7 +521,7 @@ function Cloud(position, camera) {
 }
 
 Cloud.prototype.update = function(elapasedTime, ctx) {
-  this.y += 0.05 * elapasedTime;
+  this.y += 0.1 * elapasedTime;
   if(this.y > this.camera.y + this.camera.height) {
     this.x = Math.random() * 1000;
     this.y = this.camera.y - 120 - Math.random() * (800 - 120);
@@ -477,7 +535,7 @@ Cloud.prototype.render = function(elapasedTime, ctx) {
   ctx.restore();
 }
 
-},{"./tile":9}],6:[function(require,module,exports){
+},{"./tile":16}],6:[function(require,module,exports){
 "use strict";
 
 /**
@@ -538,6 +596,370 @@ Game.prototype.loop = function(newTime) {
 },{}],7:[function(require,module,exports){
 "use strict";
 
+module.exports = exports = Kamakazi;
+const Tilemap = require('./tilemap');
+
+function explode(smoke, x, y) {
+  for(var i = 0; i < 50; ++i) {
+    var theta = Math.random() * 2 * Math.PI;
+    var mag = Math.random() * 0.5;
+    var vx = mag * Math.cos(theta);
+    var vy = mag * Math.sin(theta);
+    smoke.emit({x:x, y:y}, {x:vx, y:vy});
+  }
+}
+
+//a class to draw a part of an image
+function Kamakazi(position, player, smoke) {
+  this.health = 50;
+  this.smoke = smoke;
+  this.x = position.x;
+  this.y = position.y;
+  this.width = 24;
+  this.height = 28;
+  this.img = new Image();
+  this.img.src = 'assets/ships.png';
+  this.tmap = new Tilemap(this.img, 24, 28);
+  this.timer = 0;
+  this.idx = 0;
+  this.player = player;
+}
+
+Kamakazi.prototype.update = function(elapasedTime, ctx) {
+  //console.log(this.player);
+  var px = this.player.position.x + this.player.offx;
+  var py = this.player.position.y + this.player.offy;
+//  console.log(px, py);
+  if(this.player.position.y - this.y < 500) {
+    this.x += 0.1 * elapasedTime * Math.sign(px - this.x);
+    this.y += 0.2 * elapasedTime;
+  }
+
+  var py = this.player.position.y + this.player.offy;
+  var px = this.player.position.x + this.player.offx;
+  if(px > this.x && py > this.y && px < this.x + this.width && py < this.y + this.height) {
+    explode(this.smoke, this.x, this.y);
+    this.player.health -= 20;
+    return true;
+  }
+  return this.health <= 0;
+}
+
+Kamakazi.prototype.render = function(elapasedTime, ctx) {
+  ctx.save();
+  ctx.translate(this.x, this.y); //get paralax
+  //console.log(this.x, this.y, this.idx);
+  this.tmap.render(47, ctx);
+  ctx.restore();
+}
+
+},{"./tilemap":17}],8:[function(require,module,exports){
+"use strict";
+
+module.exports = exports = Kreeper;
+const Tilemap = require('./tilemap');
+
+//a class to draw a part of an image
+function Kreeper(position, player, smoke) {
+  this.x = position.x;
+  this.y = position.y;
+  this.player = player;
+  this.smoke = smoke;
+  this.width = 24;
+  this.height = 28;
+  this.img = new Image();
+  this.img.src = 'assets/stuff.png';
+  this.tmap = new Tilemap(this.img, 24, 28);
+  this.timer = 0;
+  this.state = "waiting";
+  this.health = 10;
+}
+
+function explode(smoke, x, y) {
+  for(var i = 0; i < 50; ++i) {
+    var theta = Math.random() * 2 * Math.PI;
+    var mag = Math.random() * 0.5;
+    var vx = mag * Math.cos(theta);
+    var vy = mag * Math.sin(theta);
+    smoke.emit({x:x, y:y}, {x:vx, y:vy});
+  }
+}
+
+Kreeper.prototype.update = function(elapasedTime, ctx) {
+
+  this.y += 0.05 * elapasedTime;
+  var py = this.player.position.y + this.player.offy;
+  var px = this.player.position.x + this.player.offx;
+  switch(this.state) {
+  case "waiting":
+    var py = this.player.position.y + this.player.offy;
+    var px = this.player.position.x + this.player.offx;
+    if(px > this.x - 40 && py > this.y - 40 && px < this.x + this.width + 30 && py < this.y + this.height + 30) {
+      this.state = "toexplode"
+    }
+    if(this.health < 0) explode(this.smoke, this.x, this.y);
+    return this.health < 0;;
+  case "toexplode":
+    this.timer += elapasedTime;
+    if(this.timer > 500) {
+      this.timer = 0;
+      explode(this.smoke, this.x, this.y);
+      if(px > this.x - 10 && py > this.y - 10 && px < this.x + this.width + 5 && py < this.y + this.height + 5) {
+        this.player.health -= 10;
+      }
+      return true;
+    }
+  }
+}
+
+Kreeper.prototype.render = function(elapasedTime, ctx) {
+  ctx.save();
+  ctx.translate(this.x, this.y); //get paralax
+  //console.log(this.x, this.y, this.idx);
+  this.tmap.render(0, ctx);
+  ctx.restore();
+}
+
+},{"./tilemap":17}],9:[function(require,module,exports){
+"use strict";
+
+module.exports = exports = Level0;
+
+const SmokeParticles = require('./smoke_particles')
+const Wheel = require('./wheel');
+const Kamakazi = require('./kamakazi');
+const Sine = require('./sine');
+const Turret = require('./turret');
+const Kreeper = require('./kreeper');
+const Powerup = require('./powerup');
+const Level1 = require('./level1');
+
+
+//a class to draw a part of an image
+function Level0(bads, player, smoke, badbullets) {
+  this.bads = bads;
+  this.player = player;
+  this.smoke = smoke;
+  this.badbullets = badbullets;
+  for(var i = 0; i < 19; ++i) {
+    bads.push(new Wheel({x:1000*i/20, y:-700}, player, smoke));
+  }
+  for(var i = 0; i < 10; ++i) {
+    var y = -Math.random() * 200 - 1000;
+    bads.push(new Kamakazi({x:1000*i/20, y:y}, player, smoke));
+  }
+  for(var i = 0; i < 19; ++i) {
+    var y = -Math.random() * 200 - 1200;
+    bads.push(new Kreeper({x:1000*i/20, y:y}, player, smoke));
+  }
+  for(var i = 0; i < 5; ++i) {
+    var y = -1500;
+    bads.push(new Sine({x:1000*i/5, y:y}, badbullets));
+  }
+  for(var i = 0; i < 5; ++i) {
+    var y = -1800;
+    bads.push(new Turret({x:1000*i/5, y:y}, badbullets));
+  }
+}
+
+function rebuild(bads, player) {
+  function tri() {
+    player.fireTriBullet();
+  }
+  function quad() {
+    player.fireQuadBullet();
+  }
+  function mega() {
+    player.fireMegaBullet();
+  }
+  for(var i = 0; i < 10; ++i) {
+    var pos = {x:Math.random() * 1000, y : -Math.random() * 10000};
+    bads.push(new Powerup(pos, 1, tri, player));
+  }
+  for(var i = 0; i < 20; ++i) {
+    var pos = {x:Math.random() * 1000, y : -Math.random() * 10000};
+    bads.push(new Powerup(pos, 0, quad, player));
+  }
+  for(var i = 0; i < 2; ++i) {
+    var pos = {x:Math.random() * 1000, y : -Math.random() * 10000};
+    bads.push(new Powerup(pos, 2, mega, player));
+  }
+}
+
+Level0.prototype.update = function(bads) {
+  var py = this.player.position.y + this.player.offy;
+  if(py < -2500) {
+    console.log("next level!");
+    while(bads.length > 0) bads.pop();
+    rebuild(bads, this.player);
+    this.player.health = 100;
+    this.player.position.y = 0;
+    return new Level1(bads, this.player, this.smoke, this.badbullets);
+  }
+  return this;
+}
+
+},{"./kamakazi":7,"./kreeper":8,"./level1":10,"./powerup":13,"./sine":14,"./smoke_particles":15,"./turret":18,"./wheel":20}],10:[function(require,module,exports){
+"use strict";
+
+module.exports = exports = Level1;
+
+const SmokeParticles = require('./smoke_particles')
+const Wheel = require('./wheel');
+const Kamakazi = require('./kamakazi');
+const Sine = require('./sine');
+const Turret = require('./turret');
+const Kreeper = require('./kreeper');
+const Powerup = require('./powerup');
+const Level2 = require('./level2');
+
+
+//a class to draw a part of an image
+function Level1(bads, player, smoke, badbullets) {
+  this.bads = bads;
+  this.player = player;
+  this.smoke = smoke;
+  this.badbullets = badbullets;
+  for(var i = 0; i < 19; ++i) {
+    bads.push(new Wheel({x:1000*i/20, y:-700}, player, smoke));
+  }
+  for(var i = 0; i < 19; ++i) {
+    bads.push(new Wheel({x:1000*i/20, y:-740}, player, smoke));
+  }
+  for(var i = 0; i < 50; ++i) {
+    var y = -Math.random() * 200 - 1000;
+    bads.push(new Kamakazi({x:1000*i/20, y:y}, player, smoke));
+  }
+  for(var i = 0; i < 19; ++i) {
+    var y = -Math.random() * 200 - 1200;
+    bads.push(new Kreeper({x:1000*i/20, y:y}, player, smoke));
+  }
+  for(var i = 0; i < 5; ++i) {
+    var y = -Math.random() * 200 - 1500;
+    bads.push(new Sine({x:1000*i/5, y:y}, badbullets));
+  }
+  for(var i = 0; i < 19; i+=2) {
+    bads.push(new Wheel({x:1000*i/20, y:-2000}, player, smoke));
+  }
+  for(var i = 1; i < 19; i+=2) {
+    bads.push(new Wheel({x:1000*i/20, y:-2040}, player, smoke));
+  }
+  for(var i = 0; i < 19; i+=2) {
+    bads.push(new Wheel({x:1000*i/20, y:-2080}, player, smoke));
+  }
+  for(var i = 0; i < 75; ++i) {
+    var y = -Math.random() * 1000 - 2000;
+    bads.push(new Kamakazi({x:1000*i/20, y:y}, player, smoke));
+  }
+  var y = -2020;
+  for(var i = 0; i < 19; ++i) {
+    bads.push(new Kreeper({x:1000*i/20, y:y+20*i}, player, smoke));
+  }
+  for(var i = 0; i < 19; ++i) {
+    bads.push(new Kreeper({x:1000*i/20, y:y-20*i}, player, smoke));
+  }
+}
+
+function rebuild(bads, player) {
+  function tri() {
+    player.fireTriBullet();
+  }
+  function quad() {
+    player.fireQuadBullet();
+  }
+  function mega() {
+    player.fireMegaBullet();
+  }
+  for(var i = 0; i < 10; ++i) {
+    var pos = {x:Math.random() * 1000, y : -Math.random() * 10000};
+    bads.push(new Powerup(pos, 1, tri, player));
+  }
+  for(var i = 0; i < 20; ++i) {
+    var pos = {x:Math.random() * 1000, y : -Math.random() * 10000};
+    bads.push(new Powerup(pos, 0, quad, player));
+  }
+  for(var i = 0; i < 2; ++i) {
+    var pos = {x:Math.random() * 1000, y : -Math.random() * 10000};
+    bads.push(new Powerup(pos, 2, mega, player));
+  }
+}
+
+Level1.prototype.update = function(bads) {
+  var py = this.player.position.y + this.player.offy;
+  if(py < -2500) {
+    console.log("next level!");
+    while(bads.length > 0) bads.pop();
+    rebuild(bads, this.player);
+    this.player.health = 100;
+    this.player.position.y = 0;
+    return new Level2(bads, this.player, this.smoke, this.badbullets);
+  }
+  return this;
+}
+
+},{"./kamakazi":7,"./kreeper":8,"./level2":11,"./powerup":13,"./sine":14,"./smoke_particles":15,"./turret":18,"./wheel":20}],11:[function(require,module,exports){
+"use strict";
+
+module.exports = exports = Level2;
+
+const SmokeParticles = require('./smoke_particles')
+const Wheel = require('./wheel');
+const Kamakazi = require('./kamakazi');
+const Sine = require('./sine');
+const Turret = require('./turret');
+const Kreeper = require('./kreeper');
+const Powerup = require('./powerup');
+
+//a class to draw a part of an image
+function Level2(bads, player, smoke, badbullets) {
+  this.bads = bads;
+  this.player = player;
+  this.smoke = smoke;
+  this.badbullets = badbullets;
+  for(var i = 0; i < 19; ++i) {
+    bads.push(new Wheel({x:1000*i/20, y:-700}, player, smoke));
+  }
+  for(var i = 0; i < 19; ++i) {
+    bads.push(new Wheel({x:1000*i/20, y:-780}, player, smoke));
+  }
+  for(var i = 0; i < 19; ++i) {
+    bads.push(new Wheel({x:1000*i/20, y:-860}, player, smoke));
+  }
+  for(var i = 0; i < 100; ++i) {
+    var y = -Math.random() * 1000 - 1200;
+    var x = Math.random() * 1000;
+    bads.push(new Kamakazi({x:x, y:y}, player, smoke));
+  }
+  for(var i = 0; i < 30; ++i) {
+    bads.push(new Turret({x:1000*i/30, y:-2600}, badbullets));
+  }
+  for(var i = 0; i < 6; ++i) {
+    bads.push(new Sine({x:1000*i/6, y:-3000}, badbullets));
+  }
+  for(var i = 0; i < 19; i+=2) {
+    bads.push(new Kreeper({x:1000*i/20, y:-2640}, player, smoke));
+  }
+  for(var i = 1; i < 19; i+=2) {
+    bads.push(new Kreeper({x:1000*i/20, y:-2680}, player, smoke));
+  }
+  for(var i = 0; i < 19; i+=2) {
+    bads.push(new Kreeper({x:1000*i/20, y:-2760}, player, smoke));
+  }
+  console.log("size: ", bads.length);
+}
+
+Level2.prototype.update = function(elapasedTime) {
+  var py = this.player.position.y + this.player.offy;
+  if(py < -3200) {
+    console.log("nextity lebvel yall");
+    return this;
+  }
+  return this;
+}
+
+},{"./kamakazi":7,"./kreeper":8,"./powerup":13,"./sine":14,"./smoke_particles":15,"./turret":18,"./wheel":20}],12:[function(require,module,exports){
+"use strict";
+
 /* Classes and Libraries */
 const Vector = require('./vector');
 const Tile = require('./tile');
@@ -559,6 +981,7 @@ module.exports = exports = Player;
  * @param {BulletPool} bullets the bullet pool
  */
 function Player(bullets, fire) {
+  this.health = 100;
   this.offx = 300;
   this.offy = 500;
   this.bullets = bullets;
@@ -569,6 +992,9 @@ function Player(bullets, fire) {
   this.img.src = 'assets/tyrian.shp.007.png';
   //color key is oddly #BFDCBF
   this.tile = new Tile({x:48,y:57,width:23,height:23,scaleX:23,scaleY:27}, this.img);
+  var self = this;
+  this.fire = function() { self.fireBullet(); };
+  this.state = "live";
 }
 
 /**
@@ -579,7 +1005,6 @@ function Player(bullets, fire) {
  * boolean properties: up, left, right, down
  */
 Player.prototype.update = function(elapsedTime, input) {
-
   // set the velocity
   this.velocity.x = 0;
   if(input.left) this.velocity.x -= PLAYER_SPEED;
@@ -602,6 +1027,18 @@ Player.prototype.update = function(elapsedTime, input) {
   if(this.offx > 1024 - 24) this.offx = 1024 - 24;
   if(this.offy < 0) this.offy = 0;
   if(this.offy > 786 - 24) this.offy = 786 - 24;
+
+  return this.health > 0;
+}
+
+function drawStroked(ctx, text, x, y) {
+    ctx.font = "48px impact"
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 8;
+    ctx.strokeText(text, x, y);
+    ctx.font = "48px impact"
+    ctx.fillStyle = 'white';
+    ctx.fillText(text, x, y);
 }
 
 /**
@@ -611,6 +1048,13 @@ Player.prototype.update = function(elapsedTime, input) {
  * @param {CanvasRenderingContext2D} ctx
  */
 Player.prototype.render = function(elapasedTime, ctx) {
+  if(this.health <= 0) {
+    ctx.save();
+    ctx.resetTransform();
+    drawStroked(ctx, "YOU DIED", 410, 420);
+    ctx.restore();
+    return;
+  }
   var offset = this.angle * 23;
   ctx.save();
   ctx.translate(this.position.x + this.offx, this.position.y + this.offy);
@@ -624,11 +1068,37 @@ Player.prototype.render = function(elapasedTime, ctx) {
  * Fires a bullet
  * @param {Vector} direction
  */
-Player.prototype.fireBullet = function(direction) {
+Player.prototype.fireBullet = function() {
   var position = Vector.add(this.position, {x:12+this.offx, y:this.offy});
-  var velocity = Vector.scale(Vector.normalize(direction), BULLET_SPEED);
+  var velocity = Vector.scale({x:0, y:-1}, BULLET_SPEED);
   this.bullets.add(position, velocity);
-  console.log("got here!");
+}
+
+Player.prototype.fireTriBullet = function(direction) {
+  var position = Vector.add(this.position, {x:12+this.offx, y:this.offy});
+  var velocity = Vector.scale({x:0, y:-1}, BULLET_SPEED);
+  this.bullets.add(position, velocity);
+  var velocity = Vector.scale({x:0.5, y:-1}, BULLET_SPEED);
+  this.bullets.add(position, velocity);
+  var velocity = Vector.scale({x:-0.5, y:-1}, BULLET_SPEED);
+  this.bullets.add(position, velocity);
+}
+
+Player.prototype.fireQuadBullet = function(direction) {
+  var position = Vector.add(this.position, {x:12+this.offx, y:this.offy});
+  var velocity = Vector.scale({x:0, y:1}, BULLET_SPEED);
+  this.bullets.add(position, velocity);
+  var velocity = Vector.scale({x:0, y:-1}, BULLET_SPEED);
+  this.bullets.add(position, velocity);
+  var velocity = Vector.scale({x:-1, y:0}, BULLET_SPEED);
+  this.bullets.add(position, velocity);
+  var velocity = Vector.scale({x:1, y:0}, BULLET_SPEED);
+  this.bullets.add(position, velocity);
+}
+
+Player.prototype.fireMegaBullet = function(direction) {
+  this.fireTriBullet();
+  this.fireQuadBullet();
 }
 
 /**
@@ -645,7 +1115,92 @@ Player.prototype.fireMissile = function() {
   }
 }
 
-},{"./tile":9,"./vector":11}],8:[function(require,module,exports){
+},{"./tile":16,"./vector":19}],13:[function(require,module,exports){
+"use strict";
+
+module.exports = exports = Powerup;
+const Tilemap = require('./tilemap');
+
+//a class to draw a part of an image
+function Powerup(position, idx, method, player) {
+  this.method = method;
+  this.player = player;
+  this.x = position.x;
+  this.y = position.y;
+  this.width = 12;
+  this.height = 12;
+  this.img = new Image();
+  this.img.src = 'assets/bullets.png';
+  this.tmap = new Tilemap(this.img, 12, 12);
+  this.timer = 0;
+  this.idx = idx;
+}
+
+Powerup.prototype.update = function(elapasedTime, ctx) {
+  this.y += 0.05 * elapasedTime;
+  var py = this.player.position.y + this.player.offy;
+  var px = this.player.position.x + this.player.offx;
+  if(px > this.x - 10 && py > this.y - 10 && px < this.x + this.width + 10 && py < this.y + this.height + 10) {
+    this.player.fire = this.method;
+    return true;
+  }
+}
+
+Powerup.prototype.render = function(elapasedTime, ctx) {
+  ctx.save();
+  ctx.translate(this.x, this.y); //get paralax
+  this.tmap.render(this.idx, ctx);
+  ctx.restore();
+}
+
+},{"./tilemap":17}],14:[function(require,module,exports){
+"use strict";
+
+module.exports = exports = Sine;
+const Tilemap = require('./tilemap');
+
+//a class to draw a part of an image
+function Sine(position, bullets) {
+  this.health = 30;
+  this.x = position.x;
+  this.basex = this.x;
+  this.y = position.y;
+  this.width = 24;
+  this.height = 28;
+  this.img = new Image();
+  this.img.src = 'assets/ships.png';
+  this.tmap = new Tilemap(this.img, 24, 28);
+  this.timer = Math.random() * Math.PI * 400;
+  this.idx = 0;
+  this.freq = 0.005;
+  this.firerate = (3 * Math.random() + 2) / 1000;
+  this.toshoot = 0;
+  this.amp = 20;
+  this.bullets = bullets;
+}
+
+Sine.prototype.update = function(elapasedTime, ctx) {
+  this.toshoot += this.firerate * elapasedTime;
+  while(this.toshoot > 1) {
+    //console.log("fire!");
+    this.bullets.add({x:this.x, y:this.y}, {x:0, y:4});
+    this.toshoot -= 1;
+  }
+  this.timer += elapasedTime;
+  this.x = this.basex + this.amp * Math.sin(this.freq * this.timer);
+  this.y += 0.05 * elapasedTime;
+  return this.health <= 0;
+}
+
+Sine.prototype.render = function(elapasedTime, ctx) {
+  ctx.save();
+  ctx.translate(this.x, this.y); //get paralax
+  //console.log(this.x, this.y, this.idx);
+  this.tmap.render(3, ctx);
+  ctx.restore();
+}
+
+},{"./tilemap":17}],15:[function(require,module,exports){
 "use strict";
 
 /**
@@ -740,7 +1295,7 @@ SmokeParticles.prototype.render = function(elapsedTime, ctx) {
   }
 }
 
-},{}],9:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 "use strict";
 
 module.exports = exports = Tile;
@@ -767,7 +1322,7 @@ Tile.prototype.render = function(elapasedTime, ctx) {
   ctx.drawImage(this.buffer, 0, 0);
 }
 
-},{}],10:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 "use strict";
 
 module.exports = exports = Tilemap;
@@ -789,7 +1344,52 @@ Tilemap.prototype.render = function(idx, ctx, sx, sy) {
   ctx.drawImage(this.img, x, y, this.tx, this.ty, sx, sy, this.tx, this.ty);
 }
 
-},{}],11:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
+"use strict";
+
+module.exports = exports = Turret;
+const Tilemap = require('./tilemap');
+
+//a class to draw a part of an image
+function Turret(position, bullets) {
+  this.bullets = bullets;
+  this.x = position.x;
+  this.y = position.y;
+  this.width = 24;
+  this.height = 28;
+  this.img = new Image();
+  this.img.src = 'assets/ships.png';
+  this.tmap = new Tilemap(this.img, 24, 28);
+  this.timer = 0;
+  this.idx = 0;
+  this.firerate = 4 / 1000;
+  this.toshoot = 0;
+  this.health = 9;
+}
+
+Turret.prototype.update = function(elapasedTime, ctx) {
+  this.timer += elapasedTime;
+  this.toshoot += this.firerate * elapasedTime;
+  while(this.toshoot > 1) {
+    //console.log("fire!");
+    var theta = this.timer*0.001;
+    var vx = 4*Math.cos(theta);
+    var vy = 4*Math.sin(theta);
+    this.bullets.add({x:this.x, y:this.y}, {x:vx, y:vy});
+    this.toshoot -= 1;
+  }
+  return this.health < 0;
+}
+
+Turret.prototype.render = function(elapasedTime, ctx) {
+  ctx.save();
+  ctx.translate(this.x, this.y); //get paralax
+  //console.log(this.x, this.y, this.idx);
+  this.tmap.render(20, ctx);
+  ctx.restore();
+}
+
+},{"./tilemap":17}],19:[function(require,module,exports){
 "use strict";
 
 /**
@@ -886,16 +1486,31 @@ function normalize(a) {
   return {x: a.x / mag, y: a.y / mag};
 }
 
-},{}],12:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 "use strict";
 
 module.exports = exports = Wheel;
 const Tilemap = require('./tilemap');
 
+function explode(smoke, x, y) {
+  for(var i = 0; i < 50; ++i) {
+    var theta = Math.random() * 2 * Math.PI;
+    var mag = Math.random() * 0.5;
+    var vx = mag * Math.cos(theta);
+    var vy = mag * Math.sin(theta);
+    smoke.emit({x:x, y:y}, {x:vx, y:vy});
+  }
+}
+
 //a class to draw a part of an image
-function Wheel(position) {
+function Wheel(position, player, smoke) {
+  this.player = player;
+  this.health = 100;
+  this.smoke = smoke;
   this.x = position.x;
   this.y = position.y;
+  this.width = 48;
+  this.height = 48;
   this.img = new Image();
   this.img.src = 'assets/spinny.png';
   this.tmap = new Tilemap(this.img, 48, 48);
@@ -904,12 +1519,21 @@ function Wheel(position) {
 }
 
 Wheel.prototype.update = function(elapasedTime, ctx) {
+  this.y += 0.05 * elapasedTime;
   this.timer += elapasedTime;
   if(this.timer > 25) {
     this.idx++;
     this.timer = 0;
   }
   if(this.idx == 4) this.idx = 0;
+  var py = this.player.position.y + this.player.offy;
+  var px = this.player.position.x + this.player.offx;
+  if(px > this.x && py > this.y && px < this.x + this.width && py < this.y + this.height) {
+    explode(this.smoke, this.x, this.y);
+    this.player.health -= 50;
+    return true;
+  }
+  return this.health < 0;
 }
 
 Wheel.prototype.render = function(elapasedTime, ctx) {
@@ -920,4 +1544,4 @@ Wheel.prototype.render = function(elapasedTime, ctx) {
   ctx.restore();
 }
 
-},{"./tilemap":10}]},{},[1]);
+},{"./tilemap":17}]},{},[1]);
