@@ -274,6 +274,16 @@ function renderWorld(elapsedTime, ctx) {
     });
 }
 
+function drawStroked(ctx, text, x, y) {
+    ctx.font = "48px impact"
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 8;
+    ctx.strokeText(text, x, y);
+    ctx.font = "48px impact"
+    ctx.fillStyle = 'white';
+    ctx.fillText(text, x, y);
+}
+
 /**
   * @function renderGUI
   * Renders the game's GUI IN SCREEN COORDINATES
@@ -282,6 +292,11 @@ function renderWorld(elapsedTime, ctx) {
   */
 function renderGUI(elapsedTime, ctx) {
   // TODO: Render the GUI
+  drawStroked(ctx, "health: " + player.health, 30, 50);
+  drawStroked(ctx, "level: " + level.num, 800, 50);
+  if(level.win) {
+    drawStroked(ctx, "WIN!", 400, 400);
+  }
 }
 
 },{"./background":2,"./bullet_pool":3,"./camera":4,"./cloud":5,"./game":6,"./kamakazi":7,"./kreeper":8,"./level0":9,"./level1":10,"./level2":11,"./player":12,"./powerup":13,"./sine":14,"./smoke_particles":15,"./turret":18,"./vector":19,"./wheel":20}],2:[function(require,module,exports){
@@ -737,6 +752,7 @@ const Level1 = require('./level1');
 
 //a class to draw a part of an image
 function Level0(bads, player, smoke, badbullets) {
+  this.num = 0;
   this.bads = bads;
   this.player = player;
   this.smoke = smoke;
@@ -816,6 +832,7 @@ const Level2 = require('./level2');
 
 //a class to draw a part of an image
 function Level1(bads, player, smoke, badbullets) {
+  this.num = 1;
   this.bads = bads;
   this.player = player;
   this.smoke = smoke;
@@ -912,6 +929,8 @@ const Powerup = require('./powerup');
 
 //a class to draw a part of an image
 function Level2(bads, player, smoke, badbullets) {
+  this.win = false;
+  this.num = 2;
   this.bads = bads;
   this.player = player;
   this.smoke = smoke;
@@ -951,6 +970,7 @@ function Level2(bads, player, smoke, badbullets) {
 Level2.prototype.update = function(elapasedTime) {
   var py = this.player.position.y + this.player.offy;
   if(py < -3200) {
+    this.win = true;
     console.log("nextity lebvel yall");
     return this;
   }

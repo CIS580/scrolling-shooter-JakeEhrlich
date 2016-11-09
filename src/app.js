@@ -273,6 +273,16 @@ function renderWorld(elapsedTime, ctx) {
     });
 }
 
+function drawStroked(ctx, text, x, y) {
+    ctx.font = "48px impact"
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 8;
+    ctx.strokeText(text, x, y);
+    ctx.font = "48px impact"
+    ctx.fillStyle = 'white';
+    ctx.fillText(text, x, y);
+}
+
 /**
   * @function renderGUI
   * Renders the game's GUI IN SCREEN COORDINATES
@@ -281,4 +291,9 @@ function renderWorld(elapsedTime, ctx) {
   */
 function renderGUI(elapsedTime, ctx) {
   // TODO: Render the GUI
+  drawStroked(ctx, "health: " + player.health, 30, 50);
+  drawStroked(ctx, "level: " + level.num, 800, 50);
+  if(level.win) {
+    drawStroked(ctx, "WIN!", 400, 400);
+  }
 }

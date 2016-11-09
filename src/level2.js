@@ -12,6 +12,8 @@ const Powerup = require('./powerup');
 
 //a class to draw a part of an image
 function Level2(bads, player, smoke, badbullets) {
+  this.win = false;
+  this.num = 2;
   this.bads = bads;
   this.player = player;
   this.smoke = smoke;
@@ -51,6 +53,7 @@ function Level2(bads, player, smoke, badbullets) {
 Level2.prototype.update = function(elapasedTime) {
   var py = this.player.position.y + this.player.offy;
   if(py < -3200) {
+    this.win = true;
     console.log("nextity lebvel yall");
     return this;
   }

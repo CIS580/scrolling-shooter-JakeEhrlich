@@ -14,6 +14,7 @@ const Level2 = require('./level2');
 
 //a class to draw a part of an image
 function Level1(bads, player, smoke, badbullets) {
+  this.num = 1;
   this.bads = bads;
   this.player = player;
   this.smoke = smoke;
